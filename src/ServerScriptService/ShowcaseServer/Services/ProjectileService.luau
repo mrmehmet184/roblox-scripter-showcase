@@ -61,42 +61,60 @@ local function createProjectilePart(parent: Instance, id: number, position: Vect
 	local part = Instance.new("Part")
 	part.Name = string.format("Projectile_%d", id)
 	part.Shape = Enum.PartType.Ball
-	part.Size = Vector3.new(1.6, 1.6, 1.6)
+	part.Size = Vector3.new(1.35, 1.35, 1.35)
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
-	part.CastShadow = false
-	part.Material = Enum.Material.Neon
-	part.Color = Config.Palette.Danger
+	part.CastShadow = true
+	part.Material = Enum.Material.Metal
+	part.Color = Color3.fromRGB(58, 30, 24)
 	part.CFrame = CFrame.new(position)
 	part.Parent = parent
 
+	local ember = Instance.new("Highlight")
+	ember.Name = "Ember"
+	ember.Adornee = part
+	ember.DepthMode = Enum.HighlightDepthMode.Occluded
+	ember.FillColor = Config.Palette.Danger
+	ember.FillTransparency = 0.42
+	ember.OutlineTransparency = 1
+	ember.Parent = part
+
 	local frontAttachment = Instance.new("Attachment")
 	frontAttachment.Name = "Front"
-	frontAttachment.Position = Vector3.new(0, 0, 0.45)
+	frontAttachment.Position = Vector3.new(0, 0, 0.38)
 	frontAttachment.Parent = part
 
 	local backAttachment = Instance.new("Attachment")
 	backAttachment.Name = "Back"
-	backAttachment.Position = Vector3.new(0, 0, -0.45)
+	backAttachment.Position = Vector3.new(0, 0, -0.38)
 	backAttachment.Parent = part
 
 	local trail = Instance.new("Trail")
 	trail.Name = "Trail"
 	trail.Attachment0 = frontAttachment
 	trail.Attachment1 = backAttachment
-	trail.Color = ColorSequence.new(Config.Palette.Danger)
-	trail.LightEmission = 1
-	trail.Lifetime = 0.24
+	trail.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Config.Palette.Danger),
+		ColorSequenceKeypoint.new(0.55, Color3.fromRGB(205, 105, 49)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(72, 48, 34)),
+	})
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.18),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.LightEmission = 0.35
+	trail.Lifetime = 0.32
 	trail.MinLength = 0.05
+	trail.FaceCamera = true
 	trail.Parent = part
 
 	local light = Instance.new("PointLight")
 	light.Name = "Glow"
-	light.Color = Config.Palette.Danger
-	light.Brightness = 2.2
-	light.Range = 13
+	light.Color = Color3.fromRGB(214, 98, 48)
+	light.Brightness = 1.45
+	light.Range = 9
 	light.Shadows = false
 	light.Parent = part
 
@@ -184,15 +202,24 @@ function ProjectileService:_reflect(record: ProjectileRecord, player: Player, at
 		* Config.Projectile.Speed
 		* Config.Projectile.ReflectedSpeedMultiplier
 
-	record.part.Color = Config.Palette.Warning
+	record.part.Color = Color3.fromRGB(76, 58, 30)
 	local trail = record.part:FindFirstChild("Trail")
 	if trail and trail:IsA("Trail") then
-		trail.Color = ColorSequence.new(Config.Palette.Warning)
+		trail.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Config.Palette.Warning),
+			ColorSequenceKeypoint.new(0.55, Color3.fromRGB(236, 190, 96)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(89, 68, 38)),
+		})
 	end
 
 	local light = record.part:FindFirstChild("Glow")
 	if light and light:IsA("PointLight") then
-		light.Color = Config.Palette.Warning
+		light.Color = Color3.fromRGB(238, 181, 78)
+	end
+
+	local ember = record.part:FindFirstChild("Ember")
+	if ember and ember:IsA("Highlight") then
+		ember.FillColor = Config.Palette.Warning
 	end
 
 	self._remotes.Effect:FireAllClients({
