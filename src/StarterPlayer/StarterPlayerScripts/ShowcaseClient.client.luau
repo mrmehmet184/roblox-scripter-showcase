@@ -3,6 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("ShowcaseShared")
+local Config = require(Shared:WaitForChild("Config"))
 local Janitor = require(Shared:WaitForChild("Janitor"))
 local Types = require(ReplicatedStorage.ShowcaseShared.Types)
 
@@ -45,11 +46,10 @@ end)
 if snapshotOk and typeof(snapshotOrError) == "table" then
 	local snapshot = snapshotOrError :: FullSnapshot
 	uiController:ApplySnapshot(snapshot)
-	local version = if typeof(snapshotOrError.version) == "string" then snapshotOrError.version else "unknown"
-	uiController:Notify("SHOWCASE ONLINE // VERSION " .. string.upper(version), nil, 1.8)
+	uiController:Notify("The Warden stirs.", Config.Palette.Warning, 1.8)
 else
 	warn(string.format("[Scripter Showcase] Snapshot failed: %s", tostring(snapshotOrError)))
-	uiController:Notify("SNAPSHOT UNAVAILABLE", nil, 1.5)
+	uiController:Notify("The hunt could not begin.", Config.Palette.Danger, 1.5)
 end
 
 script.Destroying:Connect(function()
