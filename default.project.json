@@ -1,0 +1,33 @@
+{
+  "name": "mehmet184ScripterShowcase",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "ShowcaseShared": {
+        "$path": "src/ReplicatedStorage/ShowcaseShared"
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "ShowcaseBootstrap": {
+        "$path": "src/ServerScriptService/ShowcaseBootstrap.server.luau"
+      },
+      "ShowcaseServer": {
+        "$path": "src/ServerScriptService/ShowcaseServer"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "ShowcaseClient": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/ShowcaseClient.client.luau"
+        },
+        "ShowcaseClientModules": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/ShowcaseClientModules"
+        }
+      }
+    }
+  }
+}
