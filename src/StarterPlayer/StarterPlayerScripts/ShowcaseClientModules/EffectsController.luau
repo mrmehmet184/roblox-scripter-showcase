@@ -13,10 +13,14 @@ local MathUtil = require(ReplicatedStorage:WaitForChild("ShowcaseShared"):WaitFo
 local EffectsController = {}
 EffectsController.__index = EffectsController
 
+local random = Random.new()
+
 type InternalEffectsController = {
 	_ui: any,
 	_localPlayer: Player,
 	_shakeToken: number,
+	_destroyed: boolean,
+	_activeGuards: { [BasePart]: boolean },
 }
 
 export type EffectsController = typeof(setmetatable({} :: InternalEffectsController, EffectsController))
@@ -63,24 +67,62 @@ function EffectsController.new(uiController: any): EffectsController
 		_ui = uiController,
 		_localPlayer = Players.LocalPlayer,
 		_shakeToken = 0,
+		_destroyed = false,
+		_activeGuards = {},
 	}, EffectsController)
 end
 
 function EffectsController:_burst(position: Vector3, color: Color3, maximumSize: number)
-	local sphere = makePart("LocalBurst", position, Vector3.new(0.5, 0.5, 0.5), color, Enum.Material.Neon)
-	sphere.Shape = Enum.PartType.Ball
-	sphere.Transparency = 0.15
+	local ring = makePart(
+		"LocalImpactRing",
+		position + Vector3.new(0, 0.08, 0),
+		Vector3.new(0.08, 0.8, 0.8),
+		color,
+		Enum.Material.SmoothPlastic
+	)
+	ring.Shape = Enum.PartType.Cylinder
+	ring.CFrame = CFrame.new(ring.Position) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Transparency = 0.72
 
 	TweenService:Create(
-		sphere,
-		TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		ring,
+		TweenInfo.new(0.34, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
 		{
-			Size = Vector3.new(maximumSize, maximumSize, maximumSize),
+			Size = Vector3.new(0.08, maximumSize, maximumSize),
 			Transparency = 1,
 		}
 	):Play()
+	Debris:AddItem(ring, 0.4)
 
-	Debris:AddItem(sphere, 0.35)
+	local travel = math.clamp(maximumSize * 0.42, 1.2, 7)
+	for index = 1, 8 do
+		local angle = (index / 8) * math.pi * 2 + random:NextNumber(-0.22, 0.22)
+		local direction = Vector3.new(math.cos(angle), random:NextNumber(0.28, 0.72), math.sin(angle)).Unit
+		local shardColor = color:Lerp(Color3.fromRGB(94, 76, 57), 0.48)
+		local shard = makePart(
+			"LocalImpactShard",
+			position + Vector3.new(0, 0.35, 0),
+			Vector3.new(random:NextNumber(0.12, 0.24), random:NextNumber(0.12, 0.32), random:NextNumber(0.12, 0.24)),
+			shardColor,
+			Enum.Material.Slate
+		)
+		shard.Transparency = 0.08
+		local destination = position + direction * random:NextNumber(travel * 0.55, travel)
+		TweenService:Create(
+			shard,
+			TweenInfo.new(random:NextNumber(0.28, 0.46), Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{
+				CFrame = CFrame.new(destination) * CFrame.Angles(
+					random:NextNumber(-2.5, 2.5),
+					random:NextNumber(-2.5, 2.5),
+					random:NextNumber(-2.5, 2.5)
+				),
+				Transparency = 1,
+				Size = shard.Size * 0.45,
+			}
+		):Play()
+		Debris:AddItem(shard, 0.52)
+	end
 end
 
 function EffectsController:_showDamageNumber(position: Vector3, amount: number, color: Color3, prefix: string?)
@@ -97,12 +139,12 @@ function EffectsController:_showDamageNumber(position: Vector3, amount: number, 
 
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBlack
+	label.Font = Enum.Font.Antique
 	label.Text = string.format("%s%d", prefix or "-", math.floor(amount))
 	label.TextColor3 = color
-	label.TextSize = 27
+	label.TextSize = 25
 	label.TextStrokeColor3 = Config.Palette.Background
-	label.TextStrokeTransparency = 0.25
+	label.TextStrokeTransparency = 0.42
 	label.Size = UDim2.fromScale(1, 1)
 	label.Parent = billboard
 
@@ -128,15 +170,15 @@ function EffectsController:_attackTrace(payload: { [string]: any })
 	local range = if typeof(payload.range) == "number" then math.clamp(payload.range, 1, 30) else 12
 	local direction = MathUtil.SafeUnit(payload.direction, Vector3.new(0, 0, -1))
 	local midpoint = payload.origin + direction * (range * 0.5)
-	local color = if payload.userId == self._localPlayer.UserId then Config.Palette.Info else Config.Palette.MutedText
-	local trace = makePart("LocalAttackTrace", midpoint, Vector3.new(0.16, 0.16, range), color, Enum.Material.Neon)
+	local color = if payload.userId == self._localPlayer.UserId then Color3.fromRGB(223, 210, 172) else Config.Palette.MutedText
+	local trace = makePart("LocalAttackTrace", midpoint, Vector3.new(0.09, 0.48, range), color, Enum.Material.SmoothPlastic)
 	trace.CFrame = CFrame.lookAt(midpoint, midpoint + direction)
-	trace.Transparency = 0.15
+	trace.Transparency = 0.58
 
 	TweenService:Create(
 		trace,
-		TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Transparency = 1, Size = Vector3.new(0.04, 0.04, range * 1.05) }
+		TweenInfo.new(0.13, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+		{ Transparency = 1, Size = Vector3.new(0.02, 0.08, range * 1.03) }
 	):Play()
 	Debris:AddItem(trace, 0.2)
 
@@ -146,6 +188,10 @@ function EffectsController:_attackTrace(payload: { [string]: any })
 end
 
 function EffectsController:_showParryShield(userId: number, duration: number)
+	if self._destroyed then
+		return
+	end
+
 	local player = Players:GetPlayerByUserId(userId)
 	if player == nil then
 		return
@@ -157,23 +203,40 @@ function EffectsController:_showParryShield(userId: number, duration: number)
 		return
 	end
 
-	local shield = makePart("LocalParryShield", rootPart.Position, Vector3.one * 2, Config.Palette.Info, Enum.Material.ForceField)
-	shield.Shape = Enum.PartType.Ball
+	local shield = makePart(
+		"LocalParryGuard",
+		rootPart.Position,
+		Vector3.new(0.5, 1, 0.12),
+		Config.Palette.Warning,
+		Enum.Material.Metal
+	)
 	shield.Transparency = 0.58
+	shield.CFrame = rootPart.CFrame * CFrame.new(0, 0.5, -2.1)
+
+	local guardGlow = Instance.new("Highlight")
+	guardGlow.Name = "GuardGlow"
+	guardGlow.Adornee = shield
+	guardGlow.DepthMode = Enum.HighlightDepthMode.Occluded
+	guardGlow.FillColor = Config.Palette.Warning
+	guardGlow.FillTransparency = 0.62
+	guardGlow.OutlineColor = Color3.fromRGB(244, 205, 120)
+	guardGlow.OutlineTransparency = 0.28
+	guardGlow.Parent = shield
+	self._activeGuards[shield] = true
 
 	TweenService:Create(
 		shield,
 		TweenInfo.new(math.min(duration, 0.18), Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Size = Vector3.one * 8 }
+		{ Size = Vector3.new(5.2, 5.8, 0.16), Transparency = 0.72 }
 	):Play()
 
 	task.spawn(function()
 		local startedAt = os.clock()
-		while shield.Parent ~= nil and os.clock() - startedAt < duration do
+		while not self._destroyed and shield.Parent ~= nil and os.clock() - startedAt < duration do
 			local currentCharacter = player.Character
 			local currentRoot = if currentCharacter ~= nil then currentCharacter:FindFirstChild("HumanoidRootPart") else nil
 			if currentRoot and currentRoot:IsA("BasePart") then
-				shield.CFrame = currentRoot.CFrame
+				shield.CFrame = currentRoot.CFrame * CFrame.new(0, 0.5, -2.1)
 			end
 			RunService.RenderStepped:Wait()
 		end
@@ -182,50 +245,76 @@ function EffectsController:_showParryShield(userId: number, duration: number)
 			local tween = TweenService:Create(
 				shield,
 				TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-				{ Size = Vector3.one * 10, Transparency = 1 }
+				{ Size = Vector3.new(6.4, 6.8, 0.08), Transparency = 1 }
 			)
 			tween:Play()
 			tween.Completed:Wait()
 			shield:Destroy()
 		end
+		self._activeGuards[shield] = nil
 	end)
 end
 
 function EffectsController:_showSlamTelegraph(position: Vector3, radius: number, duration: number)
+	local markerFolder = Instance.new("Folder")
+	markerFolder.Name = "LocalSlamWarning"
+	markerFolder.Parent = Workspace
+
 	local disc = makePart(
 		"LocalSlamTelegraph",
-		position,
+		position + Vector3.new(0, 0.06, 0),
 		Vector3.new(0.12, 2, 2),
 		Config.Palette.Danger,
-		Enum.Material.Neon
+		Enum.Material.SmoothPlastic
 	)
+	disc.Parent = markerFolder
 	disc.Shape = Enum.PartType.Cylinder
-	disc.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))
-	disc.Transparency = 0.68
+	disc.CFrame = CFrame.new(disc.Position) * CFrame.Angles(0, 0, math.rad(90))
+	disc.Transparency = 0.86
 
 	TweenService:Create(
 		disc,
 		TweenInfo.new(duration, Enum.EasingStyle.Linear),
 		{
 			Size = Vector3.new(0.12, radius * 2, radius * 2),
-			Transparency = 0.82,
+			Transparency = 0.76,
 		}
 	):Play()
 
-	Debris:AddItem(disc, duration + 0.05)
+	for index = 1, 14 do
+		local angle = (index / 14) * math.pi * 2
+		local markerPosition = position + Vector3.new(math.cos(angle) * radius, 0.12, math.sin(angle) * radius)
+		local marker = makePart(
+			"WarningStone",
+			markerPosition,
+			Vector3.new(0.48, 0.1, 2.3),
+			Color3.fromRGB(173, 64, 43),
+			Enum.Material.SmoothPlastic
+		)
+		marker.Parent = markerFolder
+		marker.CFrame = CFrame.lookAt(markerPosition, Vector3.new(position.X, markerPosition.Y, position.Z))
+		marker.Transparency = 0.32
+		TweenService:Create(
+			marker,
+			TweenInfo.new(math.max(0.08, duration / 4), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 1, true),
+			{ Transparency = 0.74 }
+		):Play()
+	end
+
+	Debris:AddItem(markerFolder, duration + 0.08)
 end
 
 function EffectsController:_showSlamImpact(position: Vector3, radius: number)
 	local disc = makePart(
 		"LocalSlamImpact",
-		position,
+		position + Vector3.new(0, 0.08, 0),
 		Vector3.new(0.18, radius * 0.3, radius * 0.3),
-		Config.Palette.Danger,
-		Enum.Material.Neon
+		Color3.fromRGB(119, 76, 49),
+		Enum.Material.Slate
 	)
 	disc.Shape = Enum.PartType.Cylinder
 	disc.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))
-	disc.Transparency = 0.22
+	disc.Transparency = 0.48
 
 	TweenService:Create(
 		disc,
@@ -236,7 +325,7 @@ function EffectsController:_showSlamImpact(position: Vector3, radius: number)
 		}
 	):Play()
 	Debris:AddItem(disc, 0.38)
-	self:_burst(position + Vector3.new(0, 1.2, 0), Config.Palette.Danger, 8)
+	self:_burst(position + Vector3.new(0, 0.8, 0), Color3.fromRGB(152, 95, 55), 8)
 	self:_shakeCamera(0.3, 0.42)
 end
 
@@ -246,7 +335,7 @@ function EffectsController:_shakeCamera(strength: number, duration: number)
 
 	task.spawn(function()
 		local startedAt = os.clock()
-		while token == self._shakeToken do
+		while not self._destroyed and token == self._shakeToken do
 			local elapsed = os.clock() - startedAt
 			if elapsed >= duration then
 				break
@@ -291,7 +380,7 @@ function EffectsController:Handle(payload: { [string]: any })
 			self:_burst(payload.position, Config.Palette.Warning, 7)
 		end
 		if payload.userId == self._localPlayer.UserId then
-			self._ui:Notify("PARRY CONFIRMED // PROJECTILE REFLECTED", Config.Palette.Warning, 1.6)
+			self._ui:Notify("Perfect parry!", Config.Palette.Warning, 1.35)
 		end
 	elseif effectType == "ProjectileReflected" then
 		if typeof(payload.position) == "Vector3" then
@@ -304,7 +393,6 @@ function EffectsController:Handle(payload: { [string]: any })
 	elseif effectType == "ReflectedProjectileHit" then
 		if typeof(payload.position) == "Vector3" and typeof(payload.amount) == "number" then
 			self:_burst(payload.position, Config.Palette.Warning, 8)
-			self:_showDamageNumber(payload.position, payload.amount, Config.Palette.Warning)
 			self:_shakeCamera(0.18, 0.24)
 		end
 	elseif effectType == "BossDamaged" then
@@ -314,7 +402,8 @@ function EffectsController:Handle(payload: { [string]: any })
 		end
 	elseif effectType == "BossTelegraph" then
 		local attack = if typeof(payload.attack) == "string" then payload.attack else "INCOMING ATTACK"
-		self._ui:Notify("BOSS // " .. attack, Config.Palette.Danger, 1.05)
+		local warning = if attack == "PROJECTILE VOLLEY" then "Incoming volley!" elseif attack == "GROUND SLAM" then "The Warden raises its hammer!" else "The Warden is attacking!"
+		self._ui:Notify(warning, Config.Palette.Danger, 1.05)
 	elseif effectType == "SlamTelegraph" then
 		if typeof(payload.position) == "Vector3" and typeof(payload.radius) == "number" and typeof(payload.duration) == "number" then
 			self:_showSlamTelegraph(
@@ -322,7 +411,7 @@ function EffectsController:Handle(payload: { [string]: any })
 				math.clamp(payload.radius, 1, 60),
 				math.clamp(payload.duration, 0.1, 5)
 			)
-			self._ui:Notify("GROUND SLAM // LEAVE THE RED ZONE", Config.Palette.Danger, payload.duration)
+			self._ui:Notify("Move out of the marked ground!", Config.Palette.Danger, payload.duration)
 		end
 	elseif effectType == "SlamImpact" then
 		if typeof(payload.position) == "Vector3" and typeof(payload.radius) == "number" then
@@ -331,21 +420,27 @@ function EffectsController:Handle(payload: { [string]: any })
 	elseif effectType == "PlayerDamaged" then
 		if payload.userId == self._localPlayer.UserId then
 			self._ui:FlashDamage()
-			local source = if typeof(payload.source) == "string" then payload.source else "Damage"
-			self._ui:Notify("DAMAGE // " .. string.upper(source), Config.Palette.Danger, 0.75)
+			self._ui:Notify("You were hit.", Config.Palette.Danger, 0.72)
 			self:_shakeCamera(0.12, 0.18)
 		end
 	elseif effectType == "BossDefeated" then
 		if typeof(payload.position) == "Vector3" then
 			self:_burst(payload.position, Config.Palette.Accent, 18)
 		end
-		self._ui:Notify("SYSTEM VERIFIED // BOSS DEFEATED", Config.Palette.Accent, 3)
+		self._ui:Notify("The Warden has fallen.", Config.Palette.Accent, 3)
 		self:_shakeCamera(0.22, 0.5)
 	end
 end
 
 function EffectsController:Destroy()
+	self._destroyed = true
 	self._shakeToken += 1
+	for guard in pairs(self._activeGuards) do
+		if guard.Parent ~= nil then
+			guard:Destroy()
+		end
+	end
+	table.clear(self._activeGuards)
 	local humanoid = getLocalHumanoid(self._localPlayer)
 	if humanoid ~= nil then
 		humanoid.CameraOffset = Vector3.zero
