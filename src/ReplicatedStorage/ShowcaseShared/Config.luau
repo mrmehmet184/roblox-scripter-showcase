@@ -1,12 +1,12 @@
 --!strict
 
 local Config = {
-	Version = "1.1.0",
+	Version = "1.2.0",
 
 	Brand = {
 		Creator = "mehmet184",
-		Title = "Scripter Showcase",
-		Subtitle = "Server-authoritative Roblox gameplay engineering",
+		Title = "The Broken Court",
+		Subtitle = "Defeat the warden before the last bell",
 	},
 
 	Match = {
@@ -28,7 +28,7 @@ local Config = {
 	},
 
 	Enemy = {
-		Name = "SENTINEL-01",
+		Name = "WARDEN OF ASH",
 		MaximumHealth = 900,
 		ProjectileCount = 5,
 		ProjectileTelegraphDuration = 0.8,
@@ -64,15 +64,15 @@ local Config = {
 	},
 
 	Palette = {
-		Background = Color3.fromRGB(12, 15, 20),
-		Panel = Color3.fromRGB(21, 26, 34),
-		PanelAlt = Color3.fromRGB(28, 34, 44),
-		Text = Color3.fromRGB(240, 244, 252),
-		MutedText = Color3.fromRGB(151, 164, 184),
-		Accent = Color3.fromRGB(59, 214, 134),
-		Warning = Color3.fromRGB(255, 190, 72),
-		Danger = Color3.fromRGB(255, 82, 104),
-		Info = Color3.fromRGB(80, 155, 255),
+		Background = Color3.fromRGB(22, 18, 14),
+		Panel = Color3.fromRGB(42, 34, 27),
+		PanelAlt = Color3.fromRGB(61, 49, 37),
+		Text = Color3.fromRGB(239, 225, 195),
+		MutedText = Color3.fromRGB(169, 151, 122),
+		Accent = Color3.fromRGB(117, 143, 102),
+		Warning = Color3.fromRGB(211, 150, 62),
+		Danger = Color3.fromRGB(151, 53, 40),
+		Info = Color3.fromRGB(116, 132, 137),
 	},
 }
 
