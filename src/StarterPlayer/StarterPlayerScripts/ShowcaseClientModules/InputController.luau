@@ -47,7 +47,7 @@ function InputController.new(remotes: any): InputController
 		Enum.KeyCode.ButtonL2
 	)
 
-	ContextActionService:SetTitle(ATTACK_ACTION, "ATTACK")
+	ContextActionService:SetTitle(ATTACK_ACTION, "STRIKE")
 	ContextActionService:SetTitle(PARRY_ACTION, "PARRY")
 	ContextActionService:SetPosition(ATTACK_ACTION, UDim2.new(1, -155, 1, -165))
 	ContextActionService:SetPosition(PARRY_ACTION, UDim2.new(1, -265, 1, -105))
