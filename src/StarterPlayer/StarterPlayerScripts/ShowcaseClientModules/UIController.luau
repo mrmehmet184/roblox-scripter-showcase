@@ -3,16 +3,20 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
 
-local Config = require(ReplicatedStorage:WaitForChild("ShowcaseShared"):WaitForChild("Config"))
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
 local UIController = {}
 UIController.__index = UIController
 
+local COLORS = {
+	White = Color3.fromRGB(245, 245, 245),
+	Muted = Color3.fromRGB(170, 170, 170),
+	Red = Color3.fromRGB(185, 28, 35),
+}
+
 type InternalUIController = {
 	_gui: ScreenGui,
-	_scale: UIScale,
 	_matchState: TextLabel,
 	_matchTimer: TextLabel,
 	_bossState: TextLabel,
@@ -28,322 +32,247 @@ type InternalUIController = {
 	_parryFill: Frame,
 	_parryStatus: TextLabel,
 	_notificationId: number,
+	_notificationTween: Tween?,
+	_damageTween: Tween?,
 	_abilityToken: number,
+	_lastResult: string?,
 	_connections: { RBXScriptConnection },
 }
 
 export type UIController = typeof(setmetatable({} :: InternalUIController, UIController))
 
-local function newInstance(className: string, properties: { [string]: any }): Instance
-	local instance = Instance.new(className)
-	for key, value in pairs(properties) do
-		(instance :: any)[key] = value
-	end
-	return instance
-end
-
-local function round(guiObject: GuiObject, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = guiObject
-end
-
-local function stroke(guiObject: GuiObject, color: Color3, transparency: number)
-	local outline = Instance.new("UIStroke")
-	outline.Color = color
-	outline.Transparency = transparency
-	outline.Thickness = 1
-	outline.Parent = guiObject
-end
-
-local function label(parent: Instance, text: string, position: UDim2, size: UDim2, textSize: number): TextLabel
-	return newInstance("TextLabel", {
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Font = Enum.Font.GothamMedium,
-		Text = text,
-		TextColor3 = Config.Palette.Text,
-		TextSize = textSize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Position = position,
-		Size = size,
-		Parent = parent,
-	}) :: TextLabel
-end
-
-local function card(parent: Instance, name: string, position: UDim2, size: UDim2, anchorPoint: Vector2?): Frame
-	local frame = newInstance("Frame", {
-		Name = name,
-		BackgroundColor3 = Config.Palette.Panel,
-		BackgroundTransparency = 0.05,
-		BorderSizePixel = 0,
-		Position = position,
-		Size = size,
-		AnchorPoint = anchorPoint or Vector2.zero,
-		Parent = parent,
-	}) :: Frame
-	round(frame, 10)
-	stroke(frame, Color3.fromRGB(78, 91, 112), 0.58)
-	return frame
+local function requireChild(parent: Instance, name: string, className: string): Instance
+	local child = parent:WaitForChild(name, 10)
+	assert(child ~= nil, string.format("[UIController] Missing %s.%s", parent:GetFullName(), name))
+	assert(child:IsA(className), string.format(
+		"[UIController] %s must be a %s, got %s",
+		child:GetFullName(),
+		className,
+		child.ClassName
+	))
+	return child
 end
 
 local function formatTime(seconds: number): string
-	local safe = math.max(0, math.floor(seconds))
-	return string.format("%02d:%02d", math.floor(safe / 60), safe % 60)
+	local wholeSeconds = math.max(0, math.ceil(seconds))
+	return string.format("%02d:%02d", math.floor(wholeSeconds / 60), wholeSeconds % 60)
+end
+
+local function humanize(value: string): string
+	local spaced = value:gsub("_", " "):gsub("(%l)(%u)", "%1 %2")
+	return string.upper(spaced)
+end
+
+local function formatCombatEvent(value: string): string
+	if value == "" then
+		return "AWAITING INPUT"
+	end
+	return humanize(value)
+end
+
+local function formatNotification(value: string): string
+	return string.upper(value)
+end
+
+local function hudTone(color: Color3?): Color3
+	if color ~= nil and color.R > color.G * 1.12 and color.R > color.B * 1.12 then
+		return COLORS.Red
+	end
+	return COLORS.White
 end
 
 function UIController.new(): UIController
-	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-	local oldGui = playerGui:FindFirstChild("ScripterShowcaseUI")
-	if oldGui then
-		oldGui:Destroy()
-	end
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
+	local gui = requireChild(playerGui, "MainUI", "ScreenGui") :: ScreenGui
+	local root = requireChild(gui, "Root", "Frame") :: Frame
+	local mainPanel = requireChild(root, "MainPanel", "Frame") :: Frame
+	local bossPanel = requireChild(mainPanel, "BossPanel", "Frame") :: Frame
+	local roundPanel = requireChild(mainPanel, "RoundPanel", "Frame") :: Frame
+	local combatRecord = requireChild(root, "CombatRecord", "Frame") :: Frame
+	local combatHints = requireChild(root, "CombatHints", "Frame") :: Frame
+	local parryTile = requireChild(combatHints, "ParryTile", "Frame") :: Frame
+	local notification = requireChild(root, "Notification", "Frame") :: Frame
 
-	local gui = newInstance("ScreenGui", {
-		Name = "ScripterShowcaseUI",
-		DisplayOrder = 100,
-		IgnoreGuiInset = true,
-		ResetOnSpawn = false,
-		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		Parent = playerGui,
-	}) :: ScreenGui
+	local healthTrack = requireChild(bossPanel, "HealthTrack", "Frame") :: Frame
+	local parryTrack = requireChild(parryTile, "ParryTrack", "Frame") :: Frame
 
-	local root = newInstance("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Parent = gui,
-	}) :: Frame
+	gui.Enabled = true
 
-	local scale = Instance.new("UIScale")
-	scale.Parent = root
-
-	local brand = card(root, "Brand", UDim2.fromOffset(22, 22), UDim2.fromOffset(360, 86))
-	local accent = newInstance("Frame", {
-		BackgroundColor3 = Config.Palette.Accent,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(12, 12),
-		Size = UDim2.fromOffset(4, 62),
-		Parent = brand,
-	}) :: Frame
-	round(accent, 3)
-	local creator = label(brand, string.upper(Config.Brand.Creator), UDim2.fromOffset(28, 13), UDim2.new(1, -40, 0, 31), 25)
-	creator.Font = Enum.Font.GothamBlack
-	local subtitle = label(brand, "SERVER-AUTHORITATIVE LUAU SHOWCASE", UDim2.fromOffset(29, 47), UDim2.new(1, -42, 0, 22), 11)
-	subtitle.TextColor3 = Config.Palette.MutedText
-
-	local match = card(root, "Match", UDim2.fromOffset(22, 120), UDim2.fromOffset(360, 50))
-	local matchState = label(match, "WAITING", UDim2.fromOffset(16, 0), UDim2.new(1, -112, 1, 0), 13)
-	matchState.Font = Enum.Font.GothamBold
-	local matchTimer = label(match, "00:00", UDim2.new(1, -98, 0, 0), UDim2.fromOffset(82, 50), 15)
-	matchTimer.Font = Enum.Font.RobotoMono
-	matchTimer.TextColor3 = Config.Palette.MutedText
-	matchTimer.TextXAlignment = Enum.TextXAlignment.Right
-
-	local boss = card(root, "Boss", UDim2.new(0.5, 0, 0, 22), UDim2.fromOffset(520, 90), Vector2.new(0.5, 0))
-	local bossTitle = label(boss, Config.Enemy.Name, UDim2.fromOffset(16, 8), UDim2.new(0.55, 0, 0, 24), 17)
-	bossTitle.Font = Enum.Font.GothamBlack
-	local bossHealthText = label(boss, string.format("%d / %d", Config.Enemy.MaximumHealth, Config.Enemy.MaximumHealth), UDim2.new(0.55, 0, 0, 8), UDim2.new(0.45, -16, 0, 24), 12)
-	bossHealthText.Font = Enum.Font.RobotoMono
-	bossHealthText.TextColor3 = Config.Palette.MutedText
-	bossHealthText.TextXAlignment = Enum.TextXAlignment.Right
-	local bar = newInstance("Frame", {
-		BackgroundColor3 = Color3.fromRGB(47, 54, 67),
-		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		Position = UDim2.fromOffset(16, 37),
-		Size = UDim2.new(1, -32, 0, 12),
-		Parent = boss,
-	}) :: Frame
-	round(bar, 6)
-	local bossHealthFill = newInstance("Frame", {
-		BackgroundColor3 = Config.Palette.Danger,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		Parent = bar,
-	}) :: Frame
-	round(bossHealthFill, 6)
-	local bossState = label(boss, "STATE // DORMANT", UDim2.fromOffset(16, 57), UDim2.new(0.55, 0, 0, 22), 11)
-	bossState.Font = Enum.Font.GothamBold
-	bossState.TextColor3 = Config.Palette.Warning
-	local bossTarget = label(boss, "TARGET // NONE", UDim2.new(0.55, 0, 0, 57), UDim2.new(0.45, -16, 0, 22), 11)
-	bossTarget.TextColor3 = Config.Palette.MutedText
-	bossTarget.TextXAlignment = Enum.TextXAlignment.Right
-
-	local telemetry = card(root, "Telemetry", UDim2.new(1, -22, 0, 22), UDim2.fromOffset(306, 210), Vector2.new(1, 0))
-	local telemetryTitle = label(telemetry, "SERVER VALIDATION", UDim2.fromOffset(15, 10), UDim2.new(1, -30, 0, 26), 17)
-	telemetryTitle.Font = Enum.Font.GothamBlack
-	local gate = label(telemetry, "REMOTE INPUT GATED BY SERVER", UDim2.fromOffset(15, 39), UDim2.new(1, -30, 0, 22), 10)
-	gate.Font = Enum.Font.GothamBold
-	gate.TextColor3 = Config.Palette.Accent
-	local acceptedCaption = label(telemetry, "ACCEPTED", UDim2.fromOffset(15, 73), UDim2.fromOffset(125, 18), 10)
-	acceptedCaption.TextColor3 = Config.Palette.MutedText
-	local rejectedCaption = label(telemetry, "REJECTED", UDim2.fromOffset(162, 73), UDim2.fromOffset(125, 18), 10)
-	rejectedCaption.TextColor3 = Config.Palette.MutedText
-	local acceptedValue = label(telemetry, "0", UDim2.fromOffset(15, 91), UDim2.fromOffset(125, 34), 25)
-	acceptedValue.Font = Enum.Font.RobotoMono
-	acceptedValue.TextColor3 = Config.Palette.Accent
-	local rejectedValue = label(telemetry, "0", UDim2.fromOffset(162, 91), UDim2.fromOffset(125, 34), 25)
-	rejectedValue.Font = Enum.Font.RobotoMono
-	rejectedValue.TextColor3 = Config.Palette.Danger
-	local lastEventCaption = label(telemetry, "LAST EVENT", UDim2.fromOffset(15, 137), UDim2.new(1, -30, 0, 18), 10)
-	lastEventCaption.TextColor3 = Config.Palette.MutedText
-	local lastEvent = label(telemetry, "AWAITING INPUT", UDim2.fromOffset(15, 156), UDim2.new(1, -30, 0, 38), 11)
-	lastEvent.Font = Enum.Font.RobotoMono
-	lastEvent.TextWrapped = true
-	lastEvent.TextYAlignment = Enum.TextYAlignment.Top
-
-	local controls = card(root, "Controls", UDim2.new(0.5, 0, 1, -22), UDim2.fromOffset(540, 76), Vector2.new(0.5, 1))
-	local attackText = label(controls, "LMB / F   ATTACK", UDim2.fromOffset(18, 8), UDim2.new(0.5, -24, 0, 25), 13)
-	attackText.Font = Enum.Font.GothamBold
-	local attackInfo = label(controls, "Validated range, cone and line of sight", UDim2.fromOffset(18, 35), UDim2.new(0.5, -24, 0, 28), 10)
-	attackInfo.TextColor3 = Config.Palette.MutedText
-	local parryText = label(controls, "Q   PARRY / REFLECT", UDim2.new(0.5, 7, 0, 8), UDim2.new(0.5, -25, 0, 25), 13)
-	parryText.Font = Enum.Font.GothamBold
-	parryText.TextColor3 = Config.Palette.Warning
-	local parryStatus = label(controls, "READY // SERVER TIMED WINDOW", UDim2.new(0.5, 7, 0, 35), UDim2.new(0.5, -25, 0, 28), 10)
-	parryStatus.TextColor3 = Config.Palette.MutedText
-	local parryFill = newInstance("Frame", {
-		BackgroundColor3 = Config.Palette.Warning,
-		BackgroundTransparency = 0.88,
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0.5, 0, 1, 0),
-		Size = UDim2.new(0.5, 0, 0, 0),
-		Parent = controls,
-	}) :: Frame
-
-	local notification = card(root, "Notification", UDim2.new(0.5, 0, 0.28, 0), UDim2.fromOffset(470, 54), Vector2.new(0.5, 0.5))
-	notification.Visible = false
-	local notificationText = label(notification, "", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 15)
-	notificationText.Font = Enum.Font.GothamBlack
-	notificationText.TextXAlignment = Enum.TextXAlignment.Center
-
-	local damageOverlay = newInstance("Frame", {
-		BackgroundColor3 = Config.Palette.Danger,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 50,
-		Parent = root,
-	}) :: Frame
-
-	local self = setmetatable({
+	return setmetatable({
 		_gui = gui,
-		_scale = scale,
-		_matchState = matchState,
-		_matchTimer = matchTimer,
-		_bossState = bossState,
-		_bossTarget = bossTarget,
-		_bossHealthText = bossHealthText,
-		_bossHealthFill = bossHealthFill,
-		_acceptedValue = acceptedValue,
-		_rejectedValue = rejectedValue,
-		_lastEvent = lastEvent,
+		_matchState = requireChild(roundPanel, "MatchState", "TextLabel") :: TextLabel,
+		_matchTimer = requireChild(roundPanel, "MatchTimer", "TextLabel") :: TextLabel,
+		_bossState = requireChild(bossPanel, "BossState", "TextLabel") :: TextLabel,
+		_bossTarget = requireChild(bossPanel, "BossTarget", "TextLabel") :: TextLabel,
+		_bossHealthText = requireChild(bossPanel, "HealthText", "TextLabel") :: TextLabel,
+		_bossHealthFill = requireChild(healthTrack, "HealthFill", "Frame") :: Frame,
+		_acceptedValue = requireChild(combatRecord, "AcceptedValue", "TextLabel") :: TextLabel,
+		_rejectedValue = requireChild(combatRecord, "RejectedValue", "TextLabel") :: TextLabel,
+		_lastEvent = requireChild(combatRecord, "LastEvent", "TextLabel") :: TextLabel,
 		_notification = notification,
-		_notificationText = notificationText,
-		_damageOverlay = damageOverlay,
-		_parryFill = parryFill,
-		_parryStatus = parryStatus,
+		_notificationText = requireChild(notification, "Text", "TextLabel") :: TextLabel,
+		_damageOverlay = requireChild(root, "DamageOverlay", "Frame") :: Frame,
+		_parryFill = requireChild(parryTrack, "ParryFill", "Frame") :: Frame,
+		_parryStatus = requireChild(parryTile, "ParryStatus", "TextLabel") :: TextLabel,
 		_notificationId = 0,
+		_notificationTween = nil,
+		_damageTween = nil,
 		_abilityToken = 0,
+		_lastResult = nil,
 		_connections = {},
-	}, UIController)
-
-	local function updateScale()
-		local camera = Workspace.CurrentCamera
-		if camera then
-			local viewport = camera.ViewportSize
-			self._scale.Scale = math.clamp(math.min(viewport.X / 1600, viewport.Y / 900), 0.65, 1)
-		end
-	end
-
-	table.insert(self._connections, Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(updateScale))
-	local camera = Workspace.CurrentCamera
-	if camera then
-		table.insert(self._connections, camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale))
-	end
-	updateScale()
-
-	return self
+	} :: InternalUIController, UIController)
 end
 
 function UIController:SetMatch(snapshot: { [string]: any })
 	local state = if typeof(snapshot.state) == "string" then snapshot.state else "Unknown"
 	local timeRemaining = if typeof(snapshot.timeRemaining) == "number" then snapshot.timeRemaining else 0
 	local result = if typeof(snapshot.result) == "string" then snapshot.result else nil
-	self._matchState.Text = if state == "Active" then "LIVE SERVER SIMULATION" elseif state == "Countdown" then "ROUND INITIALIZING" else string.upper(state)
+
+	if state == "Active" then
+		self._matchState.Text = "FIGHT"
+	elseif state == "Countdown" then
+		self._matchState.Text = "PREPARE"
+	elseif state == "Waiting" then
+		self._matchState.Text = "WAITING"
+	elseif state == "Results" then
+		self._matchState.Text = if result == "SYSTEM VERIFIED" then "VICTORY" else "ROUND OVER"
+	else
+		self._matchState.Text = humanize(state)
+	end
+
 	self._matchTimer.Text = formatTime(timeRemaining)
-	if state == "Results" and result then
-		self:Notify(result, if result == "SYSTEM VERIFIED" then Config.Palette.Accent else Config.Palette.Warning, 2.5)
+
+	if state == "Results" and result ~= nil and result ~= self._lastResult then
+		self._lastResult = result
+		self:Notify(result, if result == "SYSTEM VERIFIED" then COLORS.White else COLORS.Red, 2.5)
+	elseif state ~= "Results" then
+		self._lastResult = nil
 	end
 end
 
 function UIController:SetBoss(snapshot: { [string]: any })
 	local state = if typeof(snapshot.state) == "string" then snapshot.state else "Unknown"
 	local health = if typeof(snapshot.health) == "number" then snapshot.health else 0
-	local maximumHealth = if typeof(snapshot.maximumHealth) == "number" and snapshot.maximumHealth > 0 then snapshot.maximumHealth else Config.Enemy.MaximumHealth
+	local maximumHealth = if typeof(snapshot.maximumHealth) == "number" and snapshot.maximumHealth > 0
+		then snapshot.maximumHealth
+		else Config.Enemy.MaximumHealth
 	local targetName = if typeof(snapshot.targetName) == "string" then snapshot.targetName else "NONE"
-	self._bossState.Text = "STATE // " .. string.upper(state)
-	self._bossTarget.Text = "TARGET // " .. string.upper(targetName)
-	self._bossHealthText.Text = string.format("%d / %d", math.max(0, math.floor(health)), math.floor(maximumHealth))
-	TweenService:Create(self._bossHealthFill, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-		Size = UDim2.fromScale(math.clamp(health / maximumHealth, 0, 1), 1),
-	}):Play()
+
+	self._bossState.Text = humanize(state)
+	self._bossTarget.Text = if string.upper(targetName) == "NONE"
+		then "NO TARGET"
+		else "FACING " .. string.upper(targetName)
+	self._bossHealthText.Text = string.format(
+		"%d / %d",
+		math.max(0, math.floor(health)),
+		math.floor(maximumHealth)
+	)
+
+	TweenService:Create(
+		self._bossHealthFill,
+		TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = UDim2.fromScale(math.clamp(health / maximumHealth, 0, 1), 1) }
+	):Play()
 end
 
 function UIController:SetTelemetry(snapshot: { [string]: any })
-	self._acceptedValue.Text = tostring(math.floor(if typeof(snapshot.accepted) == "number" then snapshot.accepted else 0))
-	self._rejectedValue.Text = tostring(math.floor(if typeof(snapshot.rejected) == "number" then snapshot.rejected else 0))
-	self._lastEvent.Text = string.upper(if typeof(snapshot.lastEvent) == "string" then snapshot.lastEvent else "AWAITING INPUT")
+	self._acceptedValue.Text = tostring(math.floor(
+		if typeof(snapshot.accepted) == "number" then snapshot.accepted else 0
+	))
+	self._rejectedValue.Text = tostring(math.floor(
+		if typeof(snapshot.rejected) == "number" then snapshot.rejected else 0
+	))
+	self._lastEvent.Text = formatCombatEvent(
+		if typeof(snapshot.lastEvent) == "string" then snapshot.lastEvent else "Awaiting input"
+	)
 end
 
 function UIController:StartParryCooldown(duration: number)
 	if duration <= 0 then
 		return
 	end
+
 	self._abilityToken += 1
 	local token = self._abilityToken
+
 	task.spawn(function()
 		local startedAt = os.clock()
 		while token == self._abilityToken do
 			local remaining = math.max(0, duration - (os.clock() - startedAt))
-			self._parryFill.Size = UDim2.new(0.5, 0, math.clamp(remaining / duration, 0, 1), 0)
-			self._parryStatus.Text = if remaining > 0 then string.format("COOLDOWN // %.1fs", remaining) else "READY // SERVER TIMED WINDOW"
+			self._parryFill.Size = UDim2.fromScale(math.clamp(remaining / duration, 0, 1), 1)
+			self._parryStatus.Text = if remaining > 0
+				then string.format("RECOVERING %.1fs", remaining)
+				else "PARRY READY"
+			self._parryStatus.TextColor3 = if remaining > 0 then COLORS.Muted else COLORS.White
+
 			if remaining <= 0 then
 				break
 			end
 			task.wait(0.05)
 		end
+
 		if token == self._abilityToken then
-			self._parryFill.Size = UDim2.new(0.5, 0, 0, 0)
+			self._parryFill.Size = UDim2.fromScale(0, 1)
+			self._parryStatus.Text = "PARRY READY"
+			self._parryStatus.TextColor3 = COLORS.White
 		end
 	end)
 end
 
-function UIController:Notify(text: string, color: Color3?, duration: number?)
+function UIController:Notify(message: string, color: Color3?, duration: number?)
 	self._notificationId += 1
 	local id = self._notificationId
-	self._notificationText.Text = string.upper(text)
-	self._notificationText.TextColor3 = color or Config.Palette.Text
+
+	if self._notificationTween ~= nil then
+		self._notificationTween:Cancel()
+		self._notificationTween = nil
+	end
+
+	self._notificationText.Text = formatNotification(message)
+	self._notificationText.TextColor3 = hudTone(color)
+	self._notificationText.TextTransparency = 0
+	self._notification.BackgroundTransparency = 0.08
 	self._notification.Visible = true
-	self._notification.BackgroundTransparency = 0.02
+
 	task.delay(duration or 1.4, function()
 		if id ~= self._notificationId then
 			return
 		end
-		local tween = TweenService:Create(self._notification, TweenInfo.new(0.2), { BackgroundTransparency = 1 })
+
+		local tween = TweenService:Create(
+			self._notification,
+			TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ BackgroundTransparency = 1 }
+		)
+		self._notificationTween = tween
 		tween:Play()
 		tween.Completed:Once(function()
 			if id == self._notificationId then
 				self._notification.Visible = false
+				self._notificationTween = nil
 			end
 		end)
 	end)
 end
 
 function UIController:FlashDamage()
-	self._damageOverlay.BackgroundTransparency = 0.76
-	TweenService:Create(self._damageOverlay, TweenInfo.new(0.45), { BackgroundTransparency = 1 }):Play()
+	if self._damageTween ~= nil then
+		self._damageTween:Cancel()
+	end
+
+	self._damageOverlay.BackgroundTransparency = 0.82
+	local tween = TweenService:Create(
+		self._damageOverlay,
+		TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ BackgroundTransparency = 1 }
+	)
+	self._damageTween = tween
+	tween:Play()
+	tween.Completed:Once(function()
+		if self._damageTween == tween then
+			self._damageTween = nil
+		end
+	end)
 end
 
 function UIController:HandleState(payload: { [string]: any })
@@ -353,7 +282,10 @@ function UIController:HandleState(payload: { [string]: any })
 		self:SetBoss(payload)
 	elseif payload.kind == "Telemetry" then
 		self:SetTelemetry(payload)
-	elseif payload.kind == "Ability" and payload.ability == "Parry" and typeof(payload.cooldown) == "number" then
+	elseif payload.kind == "Ability"
+		and payload.ability == "Parry"
+		and typeof(payload.cooldown) == "number"
+	then
 		self:StartParryCooldown(payload.cooldown)
 	end
 end
@@ -372,11 +304,20 @@ end
 
 function UIController:Destroy()
 	self._abilityToken += 1
+	self._notificationId += 1
+
+	if self._notificationTween ~= nil then
+		self._notificationTween:Cancel()
+	end
+	if self._damageTween ~= nil then
+		self._damageTween:Cancel()
+	end
+
 	for _, connection in ipairs(self._connections) do
 		connection:Disconnect()
 	end
 	table.clear(self._connections)
-	self._gui:Destroy()
+	self._gui.Enabled = false
 end
 
 return UIController
