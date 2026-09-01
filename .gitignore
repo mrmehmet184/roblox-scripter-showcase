@@ -7,4 +7,5 @@ __pycache__/
 *.rbxl
 *.rbxm
 *.rbxlx
+*.rbxlx.lock
 *.rbxmx

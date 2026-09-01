@@ -1,8 +1,8 @@
-# Roblox Scripting Showcase
+# The Broken Court — Roblox Scripting Showcase
 
 **Created by [mehmet184](https://www.roblox.com/users/361890644/profile)**
 
-A focused Roblox/Luau gameplay showcase built for technical review. The project demonstrates server-authoritative combat, projectile parrying and reflection, configurable boss behavior, explicit state machines, remote validation, rate limiting, and a responsive telemetry interface.
+A focused Roblox/Luau boss encounter built for technical review. Fight the **Warden of Ash** in a fully runtime-generated ruined court while the project demonstrates server-authoritative combat, projectile parrying and reflection, explicit state machines, remote validation, rate limiting, and a touch-aware gameplay HUD.
 
 > **Playable demo:** The Roblox experience link will be added after publishing and live testing.
 
@@ -16,17 +16,24 @@ A focused Roblox/Luau gameplay showcase built for technical review. The project 
 - Timed parry windows and projectile reflection
 - Configurable boss targeting and attack scheduling
 - Match and enemy state machines
-- Runtime-generated arena and boss model
+- Fully runtime-generated ruined medieval court and detailed stone-and-iron boss
+- Sunset lighting, atmosphere, fog, color grading, and restrained combat effects
 - Desktop, gamepad, and touch input support
-- Live accepted/rejected request telemetry
+- Replicated accepted/rejected request counters for technical inspection (hidden in the default HUD)
+
+## Current presentation
+
+The showcase now uses a cohesive worn-stone, iron, parchment, and ember visual language instead of a generic neon dashboard. `ArenaService` builds the uneven court floor, central seal, ruined walls and arches, columns, banners, braziers, rubble, boundaries, spawn point, and Warden model entirely from Roblox primitives. The client adds a compact boss/match HUD, a touch-aware control layout, parry cooldown feedback, impact shards, guard effects, slam markers, damage feedback, and camera response.
 
 ## Controls
 
 | Input | Action |
 |---|---|
-| Left Mouse / `F` / Right Trigger | Attack |
+| Left Mouse / `F` / Right Trigger | Strike |
 | `Q` / Left Trigger | Parry and reflect |
 | Movement keys / thumbstick | Move |
+
+The player-facing **Strike** label maps to the validated `Attack` network action.
 
 ## Security model
 
@@ -34,7 +41,7 @@ The client sends action intent and an aim direction. It does not choose targets,
 
 The server validates:
 
-- Action names and payload shapes
+- Action names and required attack fields/types
 - Finite numeric values
 - Match and character state
 - Request rate and action cooldowns
@@ -96,8 +103,10 @@ The server generates the arena, boss, remotes, round lifecycle, and gameplay env
 2. [`ProjectileService.luau`](src/ServerScriptService/ShowcaseServer/Services/ProjectileService.luau) — homing movement, collision, parry, and reflection
 3. [`EnemyService.luau`](src/ServerScriptService/ShowcaseServer/Services/EnemyService.luau) — targeting, telegraphs, and attack sequencing
 4. [`MatchService.luau`](src/ServerScriptService/ShowcaseServer/Services/MatchService.luau) — round lifecycle and reset ownership
-5. [`StateMachine.luau`](src/ReplicatedStorage/ShowcaseShared/StateMachine.luau) — reusable transition primitive
-6. [`UIController.luau`](src/StarterPlayer/StarterPlayerScripts/ShowcaseClientModules/UIController.luau) — responsive telemetry UI
+5. [`ArenaService.luau`](src/ServerScriptService/ShowcaseServer/Services/ArenaService.luau) — runtime court, Warden, lighting, and stable gameplay references
+6. [`StateMachine.luau`](src/ReplicatedStorage/ShowcaseShared/StateMachine.luau) — reusable transition primitive
+7. [`UIController.luau`](src/StarterPlayer/StarterPlayerScripts/ShowcaseClientModules/UIController.luau) — touch-aware gameplay HUD and cooldown feedback
+8. [`EffectsController.luau`](src/StarterPlayer/StarterPlayerScripts/ShowcaseClientModules/EffectsController.luau) — local combat feedback and effect cleanup
 
 ## Documentation
 

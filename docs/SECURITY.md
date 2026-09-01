@@ -11,6 +11,8 @@ Attack { direction: Vector3 }
 Parry
 ```
 
+The HUD calls the first action **Strike**; the network protocol deliberately retains the narrow `Attack` action name.
+
 The attack request does not contain a target, damage value, range, hit position, boss reference, or success flag.
 
 ## Validation layers
@@ -29,11 +31,11 @@ Combat requests are accepted only during the `Active` match state.
 
 ### 4. Character context
 
-The server requires a living Humanoid, HumanoidRootPart, and Head.
+Both actions require a living Humanoid and HumanoidRootPart. Attack validation additionally requires a Head to establish the server-owned strike origin.
 
 ### 5. Payload validation
 
-The server checks the payload table, Vector3 type, finite values, and an expected magnitude range before normalization.
+For attacks, the server checks the payload table, direction Vector3, finite values, and an expected magnitude range before normalization. Parry does not consume a payload.
 
 ### 6. Per-action cooldown
 
