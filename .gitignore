@@ -1,0 +1,18 @@
+# Local Roblox Studio files
+*.rbxl
+*.rbxm
+*.rbxlx
+*.rbxmx
+
+# Generated showcase artifacts intentionally committed for reviewers
+!studio/Mehmet184ScripterShowcase.rbxlx
+!studio/ScripterShowcasePackage.rbxmx
+
+# Tool and OS output
+*.lock
+.DS_Store
+Thumbs.db
+sourcemap.json
+out/
+__pycache__/
+*.py[cod]
